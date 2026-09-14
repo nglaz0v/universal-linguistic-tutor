@@ -1,0 +1,6 @@
+streamlit
+llama-index
+llama-index-vector-stores-chroma
+llama-index-llms-langchain
+chromadb
+langchain-openai
