@@ -13,6 +13,7 @@ from llama_index.core import (
 )
 from llama_index.vector_stores.chroma import ChromaVectorStore
 from llama_index.llms.langchain import LangChainLLM
+from llama_index.embeddings.openai import OpenAIEmbedding
 from langchain_openai import ChatOpenAI
 
 # ==========================================
@@ -56,10 +57,18 @@ SYSTEM_PROMPT = """# РОЛЬ И МИССИЯ
 
 # Настройки LlamaIndex
 # Подключаем LangChain LLM в LlamaIndex (демонстрируем связку стеков)
-lc_llm = ChatOpenAI(model="gpt-4o", temperature=0.1)
+lc_llm = ChatOpenAI(
+    api_key=os.getenv("OPENAI_API_KEY"),
+    base_url=os.getenv("API_BASE_URL"),
+    model=os.getenv("LLM_MODEL_NAME"),
+    temperature=0.1
+)
 Settings.llm = LangChainLLM(llm=lc_llm)
-Settings.embed_model = "local:BAAI/bge-small-en-v1.5" # Локальная модель для эмбеддингов (бесплатно)
-# Если нет места/хочешь быстрее, используй OpenAI: from llama_index.embeddings.openai import OpenAIEmbedding; Settings.embed_model = OpenAIEmbedding()
+Settings.embed_model = OpenAIEmbedding(
+    api_key=os.getenv("OPENAI_API_KEY"),
+    api_base=os.getenv("API_BASE_URL"),
+    model=os.getenv("EMBEDDING_MODEL_NAME"),
+)
 
 # ==========================================
 # 2. ИНИЦИАЛИЗАЦИЯ БАЗЫ ЗНАНИЙ И RAG
@@ -93,7 +102,7 @@ def initialize_rag():
             doc.metadata["language"] = lang_name
             
         # Создание коллекции в ChromaDB для каждого языка отдельно
-        collection_name = lang_name.lower().replace(" ", "_")
+        collection_name = LANGUAGES[lang_name]
         chroma_collection = chroma_client.get_or_create_collection(collection_name)
         vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
@@ -130,7 +139,7 @@ with st.sidebar:
     st.divider()
     st.markdown("### 💡 Подсказки для демо:")
     st.markdown("- **Эсперанто:** 'Разбери слово malkomprenebla'")
-    st.markdown("- **Синдарин:** 'Как будет "орки" во мн.ч. и почему?'")
+    st.markdown("- **Синдарин:** 'Как будет \"орки\" во мн.ч. и почему?'")
     st.markdown("- **Белорусский:** 'Чем отличается тарашкевица от наркомовки?'")
     st.markdown("- **Французский:** 'Дай упражнение на Passé Composé'")
     

@@ -115,6 +115,9 @@ pip install -r requirements.txt
 
 ```toml
 OPENAI_API_KEY = "sk-your-api-key-here"
+API_BASE_URL = "https://api.smartbuddy.ru/v1"
+LLM_MODEL_NAME = "gpt-4o-mini"
+EMBEDDING_MODEL_NAME = "text-embedding-3-small"
 ```
 
 **Или** через переменную окружения:
