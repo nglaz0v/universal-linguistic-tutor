@@ -96,7 +96,7 @@
 
 ### 1. Клонирование и подготовка окружения
 ```bash
-git clone https://github.com/your-username/polyglot-rag-tutor.git
+git clone https://github.com/nglaz0v/polyglot-rag-tutor.git
 cd polyglot-rag-tutor
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
@@ -138,6 +138,9 @@ python generate_kb_sindarin.py
    ```env
    VK_GROUP_TOKEN=ваш_токен_группы_vk
    OPENAI_API_KEY=sk-ваш_ключ_openai
+   API_BASE_URL=https://api.smartbuddy.ru/v1
+   LLM_MODEL_NAME=gpt-4o-mini
+   EMBEDDING_MODEL_NAME=text-embedding-3-small
    ```
    *(Токен VK должен иметь права `messages` и `manage`)*
 2. Запустите бота:
