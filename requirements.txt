@@ -3,6 +3,8 @@ vkbottle
 llama-index
 llama-index-vector-stores-chroma
 llama-index-llms-langchain
+llama-index-llms-ollama
+llama-index-embeddings-ollama
 chromadb
 langchain-openai
 python-dotenv

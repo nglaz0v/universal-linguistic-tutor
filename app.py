@@ -2,51 +2,46 @@ import streamlit as st
 import chromadb
 import os
 from pathlib import Path
+import requests
 
-# --- LlamaIndex & LangChain Imports ---
+# --- LlamaIndex Imports ---
 from llama_index.core import (
     VectorStoreIndex, 
     SimpleDirectoryReader, 
     Settings, 
     StorageContext,
-    Document
 )
 from llama_index.vector_stores.chroma import ChromaVectorStore
 from llama_index.llms.langchain import LangChainLLM
 from llama_index.embeddings.openai import OpenAIEmbedding
 from langchain_openai import ChatOpenAI
+from llama_index.llms.ollama import Ollama
+from llama_index.embeddings.ollama import OllamaEmbedding
 
 # ==========================================
 # 1. КОНФИГУРАЦИЯ И СИСТЕМНЫЙ ПРОМПТ
 # ==========================================
 
-# Убедись, что у тебя установлен API ключ OpenAI (например, через переменную окружения)
-# os.environ["OPENAI_API_KEY"] = "sk-..." 
-# Или используй st.secrets для Streamlit
-
 SYSTEM_PROMPT = """# РОЛЬ И МИССИЯ
-Ты — «Универсальный Лингвистический Тьютор» (Polyglot RAG). Твоя цель — помогать пользователю изучать языки, опираясь СТРОГО на предоставленную базу знаний. Ты общаешься с пользователем на русском языке, но обучаешь его целевому иностранному или вымышленному языку.
+Ты — «Универсальный Лингвистический Тьютор» (Polyglot RAG). Твоя цель — помогать пользователю изучать языки, опираясь СТРОГО на предоставленную базу знаний. Ты общаешься с пользователем на русском языке.
 
 # АРХИТЕКТУРА И ИЗОЛЯЦИЯ КОНТЕКСТА (КРИТИЧЕСКИ ВАЖНО)
 Твоя база знаний разделена на 4 независимых языковых домена:
-1. Французский (реальный, романская группа)
-2. Белорусский (реальный, славянская группа, особенности: аканне, дзеканне, тарашкевіца/наркамаўка)
-3. Эсперанто (искусственный, абсолютно регулярный, без исключений)
-4. Синдарин (вымышленный, эльфийский, строгие алгоритмические правила: мутации, i-аффония)
+1. Французский
+2. Белорусский (аканне, дзеканне, тарашкевіца/наркамаўка)
+3. Эсперанто (абсолютно регулярный, без исключений)
+4. Синдарин (эльфийский, мутации, i-аффония)
 
-ПРАВИЛО ИЗОЛЯЦИИ: Прежде чем ответить, определи, какой язык имеет в виду пользователь. 
-- Если извлеченный RAG-контекст относится к ДРУГОМУ языку — ИГНОРИРУЙ этот контекст. 
-- Никогда не применяй правила одного языка к другому. 
-- Если в контексте нет информации по запрошенному языку, честно скажи: "В предоставленных материалах по этому языку данное правило не детализировано".
+ПРАВИЛО ИЗОЛЯЦИИ: Определи язык пользователя. Если извлеченный RAG-контекст относится к ДРУГОМУ языку — ИГНОРИРУЙ его. Никогда не применяй правила одного языка к другому. Если информации нет, честно скажи: "В предоставленных материалах по этому языку данное правило не детализировано".
 
-# ПРИНЦИПЫ ОБУЧЕНИЯ И ФОРМАТ ОТВЕТА
-1. Структурированность: Всегда используй Markdown. Выделяй жирным шрифтом ключевые слова.
-2. Декомпозиция: Разбирай сложные слова на морфемы (особенно в Эсперанто и Синдарине).
-3. Контекст чтения: Приводи примеры из литературного или лорного контекста.
-4. Разбор ошибок: Хвали за попытку, указывай на ошибку, объясняй правило.
+# ПРИНЦИПЫ ОБУЧЕНИЯ
+1. Структурированность: Используй Markdown. Выделяй жирным ключевые слова и окончания.
+2. Декомпозиция: Разбирай сложные слова на морфемы (корень, префикс, суффикс), особенно в Эсперанто и Синдарине.
+3. Контекст чтения: Приводи примеры из литературы, новостей или лора.
+4. Разбор ошибок: Похвали за попытку, укажи на ошибку, объясни правило.
 
 # ФОРМАТ ГЕНЕРАЦИИ УПРАЖНЕНИЙ
-Если пользователь просит упражнение, сгенерируй РОВНО 5 заданий.
+Если просят упражнение, сгенерируй РОВНО 5 заданий. 
 ВАЖНО: Сначала выдай ТОЛЬКО задания. Не пиши ответы сразу. Напиши: "Жду твои ответы! Напиши их, и я проверю, либо попроси 'дай ключи'".
 
 # ЗАЩИТА ОТ ГАЛЛЮЦИНАЦИЙ
@@ -55,20 +50,25 @@ SYSTEM_PROMPT = """# РОЛЬ И МИССИЯ
 - БЕЛОРУССКИЙ: Учитывай разницу наркомовки и тарашкевицы.
 """
 
-# Настройки LlamaIndex
-# Подключаем LangChain LLM в LlamaIndex (демонстрируем связку стеков)
-lc_llm = ChatOpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    base_url=os.getenv("API_BASE_URL"),
-    model=os.getenv("LLM_MODEL_NAME"),
-    temperature=0.1
-)
-Settings.llm = LangChainLLM(llm=lc_llm)
-Settings.embed_model = OpenAIEmbedding(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    api_base=os.getenv("API_BASE_URL"),
-    model=os.getenv("EMBEDDING_MODEL_NAME"),
-)
+# Настройки локальных моделей
+LLM_MODEL = "qwen3.5:2b"       # Отлично следует инструкциям и знает русский
+EMBED_MODEL = "nomic-embed-text" # Стандарт де-факто для локального RAG
+
+# Настройка LlamaIndex на использование Ollama
+try:
+    # Проверяем, запущена ли Ollama
+    requests.get("http://localhost:11434", timeout=2)
+    
+    Settings.llm = Ollama(
+        model=LLM_MODEL, 
+        request_timeout=120.0, # Увеличиваем таймаут для локальных моделей (особенно на CPU)
+        temperature=0.1
+    )
+    Settings.embed_model = OllamaEmbedding(model_name=EMBED_MODEL)
+    
+except requests.exceptions.ConnectionError:
+    st.error("❌ Не удалось подключиться к Ollama. Убедитесь, что Ollama запущена (ollama serve) и модели скачаны.")
+    st.stop()
 
 # ==========================================
 # 2. ИНИЦИАЛИЗАЦИЯ БАЗЫ ЗНАНИЙ И RAG
@@ -81,16 +81,16 @@ LANGUAGES = {
     "Синдарин": "sindarin_kb"
 }
 
-@st.cache_resource(show_spinner="Инициализация базы знаний и векторного хранилища...")
+@st.cache_resource(show_spinner="🔄 Инициализация локальной базы знаний и векторного хранилища... (это может занять минуту)")
 def initialize_rag():
     """Загружает документы, добавляет метаданные и создает индексы ChromaDB."""
-    chroma_client = chromadb.PersistentClient(path="./chroma_db")
+    chroma_client = chromadb.PersistentClient(path="./chroma_db_local")
     indices = {}
     
     for lang_name, folder_name in LANGUAGES.items():
         folder_path = Path(folder_name)
         if not folder_path.exists():
-            st.warning(f"Папка {folder_name} не найдена. Пропускаем.")
+            st.warning(f"⚠️ Папка {folder_name} не найдена. Пропускаем.")
             continue
             
         # Загрузка документов
@@ -107,7 +107,7 @@ def initialize_rag():
         vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
         
-        # Построение индекса
+        # Построение индекса с использованием локальных эмбеддингов
         index = VectorStoreIndex.from_documents(
             docs, 
             storage_context=storage_context, 
@@ -121,7 +121,7 @@ def initialize_rag():
 # 3. STREAMLIT UI
 # ==========================================
 
-st.set_page_config(page_title="Polyglot RAG Tutor", page_icon="📚", layout="wide")
+st.set_page_config(page_title="Polyglot RAG Tutor (Local)", page_icon="🦙", layout="wide")
 
 # Инициализация
 indices = initialize_rag()
@@ -131,9 +131,11 @@ if "messages" not in st.session_state:
 
 # Sidebar
 with st.sidebar:
-    st.title("🌍 Polyglot RAG")
-    st.markdown("Выберите язык для изучения:")
+    st.title("🦙 Polyglot RAG (Local)")
+    st.markdown(f"**LLM:** `{LLM_MODEL}`\n**Embeddings:** `{EMBED_MODEL}`")
+    st.divider()
     
+    st.markdown("Выберите язык для изучения:")
     selected_lang = st.selectbox("Целевой язык:", list(LANGUAGES.keys()))
     
     st.divider()
@@ -149,7 +151,7 @@ with st.sidebar:
 
 # Main Chat Area
 st.title(f"🎓 Тьютор: {selected_lang}")
-st.caption("Ассистент опирается строго на загруженную базу знаний (RAG)")
+st.caption("Работает полностью локально через Ollama. Данные не покидают ваш компьютер.")
 
 # Отображение истории чата
 for message in st.session_state.messages:
@@ -187,14 +189,16 @@ if prompt := st.chat_input(f"Спросите про {selected_lang}..."):
             for msg in st.session_state.messages[:-1]: # Все кроме текущего
                 chat_history.append({"role": msg["role"], "content": msg["content"]})
                 
-            # Запрос к LLM
-            response = chat_engine.chat(
-                prompt, 
-                chat_history=chat_history
-            )
+            # Асинхронный или синхронный запрос к локальной LLM
+            # Используем streamer для красивого посимвольного вывода в Streamlit
+            response = chat_engine.stream_chat(prompt, chat_history=chat_history)
             
-            full_response = response.response
+            # Посимвольный вывод (streaming)
+            for chunk in response.response_gen:
+                full_response += chunk
+                message_placeholder.markdown(full_response + "▌")
+            
             message_placeholder.markdown(full_response)
-            
+
     # Сохраняем ответ ассистента
     st.session_state.messages.append({"role": "assistant", "content": full_response})
